@@ -54,13 +54,16 @@ class DiscordRPC {
     const activity = {
       name: RPC_CONFIG.name,
       type: RPC_CONFIG.type,
-      application_id: RPC_CONFIG.application_id,
       state: RPC_CONFIG.state || undefined,
       details: RPC_CONFIG.details || undefined,
-      assets: RPC_CONFIG.assets,
-      flags: 1 << 0,
     };
 
+    if (RPC_CONFIG.application_id) {
+      activity.application_id = RPC_CONFIG.application_id;
+    }
+    if (RPC_CONFIG.assets && Object.keys(RPC_CONFIG.assets).length > 0) {
+      activity.assets = RPC_CONFIG.assets;
+    }
     if (RPC_CONFIG.buttons && RPC_CONFIG.buttons.length > 0) {
       activity.buttons = RPC_CONFIG.buttons.map((label, i) => ({ label, url: RPC_CONFIG.button_urls[i] }));
       activity.metadata = { button_urls: RPC_CONFIG.button_urls };
