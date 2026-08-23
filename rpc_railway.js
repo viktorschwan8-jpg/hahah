@@ -7,13 +7,13 @@ const TOKENS_FILE = path.join(__dirname, 'tokens.txt');
 
 const RPC_CONFIG = {
   name: 'discord.gg/976',
-  type: 2,
-  details: '',
-  state: '',
-  application_id: '1539180940050300978',
+  type: 0,
+  details: '24/7 Active',
+  state: 'discord.gg/976',
+  application_id: '',
   assets: {},
-  buttons: ['Join 976'],
-  button_urls: ['https://discord.gg/976'],
+  buttons: [],
+  button_urls: [],
 };
 
 const STATUS = 'online';
