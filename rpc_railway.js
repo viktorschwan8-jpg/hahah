@@ -1,32 +1,26 @@
-const { WebSocket } = require('ws');
-const https = require('https');
+const { Client, RichPresence } = require('discord.js-selfbot-v13');
 const fs = require('fs');
 const path = require('path');
 
 const TOKENS_FILE = path.join(__dirname, 'tokens.txt');
 
-// RPC Config - wie Vencord Plugin
+// RPC Config - identisch zu Vencord CustomRPC
 const RPC_CONFIG = {
+  APPLICATION_ID: '1539180940050300978',
   name: 'discord.gg/976',
-  type: 2,
-  state: '',
   details: '',
-  application_id: '1539180940050300978',
-  assets: {
-    large_image: 'https://i.postimg.cc/jSRYrNdC/standard(4).gif',
-    large_text: 'discord.gg/976',
-  },
+  state: '',
+  type: 'LISTENING',
+  largeImage: 'https://i.postimg.cc/jSRYrNdC/standard(4).gif',
+  largeImageText: 'discord.gg/976',
+  smallImage: '',
+  smallImageText: '',
   buttons: [
     { label: 'Join 976', url: 'https://discord.gg/976' }
   ],
-  timestamps: {
-    start: 0,
-    end: 9999
-  },
-  instance: false,
+  startTimestamp: 0,
+  endTimestamp: 9999,
 };
-
-const STATUS = 'online';
 
 function loadTokens() {
   if (process.env.TOKENS) {
@@ -42,192 +36,65 @@ function loadTokens() {
     .filter(t => t && t.length > 20);
 }
 
-class DiscordRPC {
-  constructor(token, index) {
-    this.token = token;
-    this.index = index;
-    this.ws = null;
-    this.sequence = null;
-    this.sessionId = null;
-    this.heartbeatInterval = null;
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 999;
-    this.connected = false;
+function createRPC(client) {
+  const rpc = new RichPresence(client)
+    .setApplicationId(RPC_CONFIG.APPLICATION_ID)
+    .setName(RPC_CONFIG.name)
+    .setType(RPC_CONFIG.type);
+
+  if (RPC_CONFIG.details) rpc.setDetails(RPC_CONFIG.details);
+  if (RPC_CONFIG.state) rpc.setState(RPC_CONFIG.state);
+  if (RPC_CONFIG.largeImage) rpc.setAssetsLargeImage(RPC_CONFIG.largeImage);
+  if (RPC_CONFIG.largeImageText) rpc.setAssetsLargeText(RPC_CONFIG.largeImageText);
+  if (RPC_CONFIG.smallImage) rpc.setAssetsSmallImage(RPC_CONFIG.smallImage);
+  if (RPC_CONFIG.smallImageText) rpc.setAssetsSmallText(RPC_CONFIG.smallImageText);
+  if (RPC_CONFIG.startTimestamp) rpc.setStartTimestamp(RPC_CONFIG.startTimestamp);
+  if (RPC_CONFIG.endTimestamp) rpc.setEndTimestamp(RPC_CONFIG.endTimestamp);
+  if (RPC_CONFIG.buttons && RPC_CONFIG.buttons.length > 0) {
+    rpc.setButtons(
+      ...RPC_CONFIG.buttons.map(b => ({ name: b.label, url: b.url }))
+    );
   }
 
-  getGateway() {
-    return new Promise((resolve, reject) => {
-      https.get('https://discord.com/api/v9/gateway', (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(JSON.parse(data).url));
-      }).on('error', reject);
-    });
-  }
+  return rpc;
+}
 
-  buildActivity() {
-    const activity = {
-      name: RPC_CONFIG.name,
-      type: RPC_CONFIG.type,
-      state: RPC_CONFIG.state,
-      details: RPC_CONFIG.details,
-      application_id: RPC_CONFIG.application_id,
-      assets: RPC_CONFIG.assets,
-      timestamps: RPC_CONFIG.timestamps,
-      instance: RPC_CONFIG.instance,
-    };
-    if (RPC_CONFIG.buttons && RPC_CONFIG.buttons.length > 0) {
-      activity.buttons = RPC_CONFIG.buttons;
-    }
-    return activity;
-  }
+async function startAccount(token, index) {
+  const client = new Client({ checkUpdate: false });
 
-  identify() {
-    return {
-      op: 2,
-      d: {
-        token: this.token,
-        capabilities: 253,
-        properties: {
-          os: 'windows',
-          browser: 'chrome',
-          device: 'deathcord-247',
-          system_locale: 'de',
-          browser_user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          browser_version: '120.0.0.0',
-          os_version: '10',
-          referrer: '',
-          referring_domain: '',
-          release_channel: 'stable',
-          client_build_number: 252039,
-          client_event_source: null
-        },
-        presence: {
-          status: STATUS,
-          since: 0,
-          activities: [this.buildActivity()],
-          afk: false
-        },
-        compress: false,
-        intents: 0
-      }
-    };
-  }
+  client.on('ready', () => {
+    console.log(`[Account ${index}] READY: ${client.user?.username}`);
+    const rpc = createRPC(client);
+    client.user?.setActivity(rpc);
+    console.log(`[Account ${index}] RPC gesetzt!`);
+  });
 
-  heartbeat() {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ op: 1, d: this.sequence }));
-    }
-  }
+  client.on('error', (err) => {
+    console.error(`[Account ${index}] Error: ${err.message}`);
+  });
 
-  setPresence() {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
-        op: 3,
-        d: {
-          status: STATUS,
-          since: 0,
-          activities: [this.buildActivity()],
-          afk: false
-        }
-      }));
-      console.log(`[Account ${this.index}] RPC gesetzt!`);
-    }
-  }
+  client.on('disconnect', () => {
+    console.log(`[Account ${index}] Disconnected - Reconnect in 5s...`);
+    setTimeout(() => {
+      client.login(token).catch(e => console.error(`[Account ${index}] Login Fehler:`, e.message));
+    }, 5000);
+  });
 
-  async connect() {
-    try {
-      const url = await this.getGateway();
-      console.log(`[Account ${this.index}] Verbinde...`);
-      
-      this.ws = new WebSocket(`${url}?v=9&encoding=json`);
-      
-      this.ws.on('open', () => {
-        console.log(`[Account ${this.index}] Verbunden!`);
-        this.connected = true;
-        this.reconnectAttempts = 0;
-      });
-      
-      this.ws.on('message', (data) => {
-        const msg = JSON.parse(data);
-        if (msg.s !== null) this.sequence = msg.s;
-        
-        switch (msg.op) {
-          case 10:
-            if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = setInterval(() => this.heartbeat(), msg.d.heartbeat_interval);
-            this.ws.send(JSON.stringify(this.identify()));
-            break;
-          case 11:
-            break;
-          case 0:
-            if (msg.t === 'READY') {
-              this.sessionId = msg.d.session_id;
-              console.log(`[Account ${this.index}] READY: ${msg.d.user?.username}`);
-              setTimeout(() => this.setPresence(), 2000);
-            }
-            break;
-          case 9:
-            console.log(`[Account ${this.index}] Invalid Session - Restart in 5s`);
-            this.cleanup();
-            setTimeout(() => this.connect(), 5000);
-            break;
-          case 7:
-            console.log(`[Account ${this.index}] Reconnect`);
-            this.cleanup();
-            setTimeout(() => this.connect(), 1000);
-            break;
-        }
-      });
-      
-      this.ws.on('close', (code) => {
-        console.log(`[Account ${this.index}] Closed: ${code}`);
-        this.connected = false;
-        this.cleanup();
-        
-        if (code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-          this.reconnectAttempts++;
-          const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 60000);
-          setTimeout(() => this.connect(), delay);
-        }
-      });
-      
-      this.ws.on('error', (err) => {
-        console.error(`[Account ${this.index}] Error: ${err.message}`);
-      });
-      
-    } catch (err) {
-      console.error(`[Account ${this.index}] Fehler: ${err.message}`);
-      setTimeout(() => this.connect(), 5000);
-    }
-  }
-
-  cleanup() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
-  }
-
-  disconnect() {
-    this.cleanup();
-    if (this.ws) {
-      this.ws.close(1000);
-      this.ws = null;
-    }
+  try {
+    await client.login(token);
+  } catch (err) {
+    console.error(`[Account ${index}] Login Fehler: ${err.message}`);
   }
 }
 
 // MAIN
-console.log('=== 24/7 Discord RPC (Railway) ===');
+console.log('=== 24/7 Discord RPC (discord.js-selfbot-v13) ===');
 const tokens = loadTokens();
 console.log(`${tokens.length} Accounts gefunden\n`);
 
-const clients = tokens.map((token, i) => new DiscordRPC(token, i + 1));
-clients.forEach(client => client.connect());
+tokens.forEach((token, i) => startAccount(token, i + 1));
 
 process.on('SIGINT', () => {
   console.log('\nShutdown...');
-  clients.forEach(client => client.disconnect());
   process.exit(0);
 });
