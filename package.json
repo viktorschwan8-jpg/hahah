@@ -1,0 +1,12 @@
+{
+  "name": "247selfbot",
+  "version": "1.0.0",
+  "description": "24/7 Discord Account Online RPC",
+  "main": "rpc_railway.js",
+  "scripts": {
+    "start": "node rpc_railway.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
