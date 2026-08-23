@@ -11,10 +11,7 @@ const RPC_CONFIG = {
   details: '',
   state: '',
   application_id: '1539180940050300978',
-  assets: {
-    large_image: 'https://i.postimg.cc/jSRYrNdC/standard(4).gif',
-    large_text: 'discord.gg/976',
-  },
+  assets: {},
   buttons: ['Join 976'],
   button_urls: ['https://discord.gg/976'],
 };
