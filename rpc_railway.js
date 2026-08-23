@@ -8,8 +8,8 @@ const TOKENS_FILE = path.join(__dirname, 'tokens.txt');
 const RPC_CONFIG = {
   name: 'discord.gg/976',
   type: 0,
-  details: '24/7 Active',
-  state: 'discord.gg/976',
+  details: '',
+  state: '',
   application_id: '',
   assets: {},
   buttons: [],
