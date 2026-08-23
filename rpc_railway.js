@@ -8,19 +8,20 @@ const TOKENS_FILE = path.join(__dirname, 'tokens.txt');
 // RPC Config - wie Vencord Plugin
 const RPC_CONFIG = {
   name: 'discord.gg/976',
-  type: 0,
-  state: '976',
-  details: '976',
+  type: 2,
+  state: '',
+  details: '',
   application_id: '1539180940050300978',
   assets: {
-    large_image: 'mp:https://i.postimg.cc/jSRYrNdC/standard(4).gif',
+    large_image: 'https://i.postimg.cc/jSRYrNdC/standard(4).gif',
     large_text: 'discord.gg/976',
   },
   buttons: [
     { label: 'Join 976', url: 'https://discord.gg/976' }
   ],
   timestamps: {
-    start: Date.now()
+    start: 0,
+    end: 9999
   },
   instance: false,
 };

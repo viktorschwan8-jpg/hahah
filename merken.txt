@@ -33,10 +33,13 @@
 - Large Image URL: https://i.postimg.cc/jSRYrNdC/standard(4).gif
 
 ### Bekannte Probleme
-- RPC wird noch nicht korrekt angezeigt wie im Vencord Plugin
-- Eventuell braucht Discord ein echtes Application Asset statt URL
-- Oder der RPC-Typ muss geändert werden
+- RPC wurde nicht angezeigt wie im Vencord Plugin
 
-### Nächste Schritte
-- RPC fixen damit es wie Vencord aussieht
-- Alle 20 Tokens auf Railway deployen (wenn RPC funktioniert)
+### Was gefixt wurde
+- mp: Prefix für externe Bild-URL hinzugefügt (Discord Media Proxy)
+- Buttons hinzugefügt (Join 976)
+- Activity Name auf "discord.gg/976" gesetzt (wie Application Name)
+- GitHub Push Protection blockierte Token in merken.txt → History bereinigt
+
+### Railway Status
+- Push funktioniert, deployt automatisch
