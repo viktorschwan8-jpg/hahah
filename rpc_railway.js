@@ -13,9 +13,12 @@ const RPC_CONFIG = {
   details: '976',
   application_id: '1539180940050300978',
   assets: {
-    large_image: 'https://i.postimg.cc/jSRYrNdC/standard(4).gif',
+    large_image: 'mp:https://i.postimg.cc/jSRYrNdC/standard(4).gif',
     large_text: 'discord.gg/976',
   },
+  buttons: [
+    { label: 'Join 976', url: 'https://discord.gg/976' }
+  ],
   timestamps: {
     start: Date.now()
   },
@@ -62,7 +65,7 @@ class DiscordRPC {
   }
 
   buildActivity() {
-    return {
+    const activity = {
       name: RPC_CONFIG.name,
       type: RPC_CONFIG.type,
       state: RPC_CONFIG.state,
@@ -72,6 +75,10 @@ class DiscordRPC {
       timestamps: RPC_CONFIG.timestamps,
       instance: RPC_CONFIG.instance,
     };
+    if (RPC_CONFIG.buttons && RPC_CONFIG.buttons.length > 0) {
+      activity.buttons = RPC_CONFIG.buttons;
+    }
+    return activity;
   }
 
   identify() {

@@ -1,0 +1,42 @@
+# 24/7 Selfbot - Was wurde gemacht
+
+## 23.08.2026
+
+### Projekt erstellt
+- Ordner: D:\247selfbot
+- tokens.txt mit 20 Tokens aus DiscordLightcord kopiert
+- accsliste.txt mit Account-Übersicht erstellt
+
+### RPC Skripte erstellt
+- rpc.js (lokal)
+- rpc_railway.js (für Railway)
+- rpc_account18.js (nur Account 18, in DiscordLightcord Ordner)
+- start_rpc.bat (Doppelklick zum Starten)
+
+### Account 18 identifiziert
+- Token: [in tokens.txt]
+- Username: meteantfreoldvya_43368
+- Email: caraebrydon2010@ghoulmail.com
+
+### Railway Deployment
+- GitHub Repo: https://github.com/viktorschwan8-jpg/hahah
+- Railway Projekt: gentle-hope
+- Service: hahah
+- TOKENS Variable gesetzt (nur Account 18 zum Testen)
+- Railway CLI installiert + eingeloggt (viktorschwan8@gmail.com)
+
+### RPC Config (aktuell)
+- Application ID: 1539180940050300978
+- Application Name: discord.gg/976
+- Details: 976
+- State: 976
+- Large Image URL: https://i.postimg.cc/jSRYrNdC/standard(4).gif
+
+### Bekannte Probleme
+- RPC wird noch nicht korrekt angezeigt wie im Vencord Plugin
+- Eventuell braucht Discord ein echtes Application Asset statt URL
+- Oder der RPC-Typ muss geändert werden
+
+### Nächste Schritte
+- RPC fixen damit es wie Vencord aussieht
+- Alle 20 Tokens auf Railway deployen (wenn RPC funktioniert)
