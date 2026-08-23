@@ -3,26 +3,25 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-// ============================================
-// CONFIG - Hier kannst du alles anpassen
-// ============================================
+const TOKENS_FILE = path.join(__dirname, 'tokens.txt');
+
 const RPC_CONFIG = {
-  state: 'discord.gg/976',
-  details: '24/7 Active',
-  largeImageKey: 'deathcord_logo',
-  largeImageText: 'Deathcord',
-  smallImageKey: 'online',
-  smallImageText: 'Online',
+  name: 'discord.gg/976',
+  type: 0,
+  state: '976',
+  details: '976',
+  application_id: '1539180940050300978',
+  assets: {
+    large_image: 'https://i.postimg.cc/jSRYrNdC/standard(4).gif',
+    large_text: 'discord.gg/976',
+  },
+  timestamps: {
+    start: Date.now()
+  },
   instance: false,
 };
 
-// Status: 'online', 'idle', 'dnd', 'invisible'
 const STATUS = 'online';
-
-// ============================================
-// TOKENS LADEN
-// ============================================
-const TOKENS_FILE = path.join(__dirname, 'tokens.txt');
 
 function loadTokens() {
   if (!fs.existsSync(TOKENS_FILE)) {
@@ -35,9 +34,6 @@ function loadTokens() {
     .filter(t => t && t.length > 20);
 }
 
-// ============================================
-// DISCORD GATEWAY CONNECTION
-// ============================================
 class DiscordRPC {
   constructor(token, index) {
     this.token = token;
@@ -47,7 +43,7 @@ class DiscordRPC {
     this.sessionId = null;
     this.heartbeatInterval = null;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 10;
+    this.maxReconnectAttempts = 999;
     this.connected = false;
   }
 
@@ -59,6 +55,19 @@ class DiscordRPC {
         res.on('end', () => resolve(JSON.parse(data).url));
       }).on('error', reject);
     });
+  }
+
+  buildActivity() {
+    return {
+      name: RPC_CONFIG.name,
+      type: RPC_CONFIG.type,
+      state: RPC_CONFIG.state,
+      details: RPC_CONFIG.details,
+      application_id: RPC_CONFIG.application_id,
+      assets: RPC_CONFIG.assets,
+      timestamps: RPC_CONFIG.timestamps,
+      instance: RPC_CONFIG.instance,
+    };
   }
 
   identify() {
@@ -84,22 +93,7 @@ class DiscordRPC {
         presence: {
           status: STATUS,
           since: 0,
-          activities: [{
-            name: 'Custom RPC',
-            type: 0,
-            state: RPC_CONFIG.state,
-            details: RPC_CONFIG.details,
-            assets: {
-              large_image: RPC_CONFIG.largeImageKey,
-              large_text: RPC_CONFIG.largeImageText,
-              small_image: RPC_CONFIG.smallImageKey,
-              small_text: RPC_CONFIG.smallImageText
-            },
-            instance: RPC_CONFIG.instance,
-            timestamps: {
-              start: Date.now()
-            }
-          }],
+          activities: [this.buildActivity()],
           afk: false
         },
         compress: false,
@@ -121,33 +115,18 @@ class DiscordRPC {
         d: {
           status: STATUS,
           since: 0,
-          activities: [{
-            name: 'Custom RPC',
-            type: 0,
-            state: RPC_CONFIG.state,
-            details: RPC_CONFIG.details,
-            assets: {
-              large_image: RPC_CONFIG.largeImageKey,
-              large_text: RPC_CONFIG.largeImageText,
-              small_image: RPC_CONFIG.smallImageKey,
-              small_text: RPC_CONFIG.smallImageText
-            },
-            instance: RPC_CONFIG.instance,
-            timestamps: {
-              start: Date.now()
-            }
-          }],
+          activities: [this.buildActivity()],
           afk: false
         }
       }));
-      console.log(`[Account ${this.index}] Custom RPC gesetzt!`);
+      console.log(`[Account ${this.index}] RPC gesetzt!`);
     }
   }
 
   async connect() {
     try {
       const url = await this.getGateway();
-      console.log(`[Account ${this.index}] Verbinde zu: ${url}`);
+      console.log(`[Account ${this.index}] Verbinde...`);
       
       this.ws = new WebSocket(`${url}?v=9&encoding=json`);
       
@@ -159,63 +138,54 @@ class DiscordRPC {
       
       this.ws.on('message', (data) => {
         const msg = JSON.parse(data);
-        
-        if (msg.s !== null) {
-          this.sequence = msg.s;
-        }
+        if (msg.s !== null) this.sequence = msg.s;
         
         switch (msg.op) {
-          case 10: // Hello
-            console.log(`[Account ${this.index}] Heartbeat: ${msg.d.heartbeat_interval}ms`);
+          case 10:
             if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
             this.heartbeatInterval = setInterval(() => this.heartbeat(), msg.d.heartbeat_interval);
             this.ws.send(JSON.stringify(this.identify()));
             break;
-            
-          case 11: // Heartbeat ACK
+          case 11:
             break;
-            
-          case 0: // Dispatch
+          case 0:
             if (msg.t === 'READY') {
               this.sessionId = msg.d.session_id;
-              console.log(`[Account ${this.index}] READY - User: ${msg.d.user?.username}`);
+              console.log(`[Account ${this.index}] READY: ${msg.d.user?.username}`);
               setTimeout(() => this.setPresence(), 2000);
             }
             break;
-            
-          case 9: // Invalid Session
-            console.log(`[Account ${this.index}] Invalid Session - Neustart in 5s...`);
+          case 9:
+            console.log(`[Account ${this.index}] Invalid Session - Restart in 5s`);
             this.cleanup();
             setTimeout(() => this.connect(), 5000);
             break;
-            
-          case 7: // Reconnect
-            console.log(`[Account ${this.index}] Reconnect angefordert`);
+          case 7:
+            console.log(`[Account ${this.index}] Reconnect`);
             this.cleanup();
             setTimeout(() => this.connect(), 1000);
             break;
         }
       });
       
-      this.ws.on('close', (code, reason) => {
-        console.log(`[Account ${this.index}] Verbindung geschlossen: ${code}`);
+      this.ws.on('close', (code) => {
+        console.log(`[Account ${this.index}] Closed: ${code}`);
         this.connected = false;
         this.cleanup();
         
         if (code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 60000);
-          console.log(`[Account ${this.index}] Neustart in ${delay/1000}s (Versuch ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
           setTimeout(() => this.connect(), delay);
         }
       });
       
       this.ws.on('error', (err) => {
-        console.error(`[Account ${this.index}] Fehler: ${err.message}`);
+        console.error(`[Account ${this.index}] Error: ${err.message}`);
       });
       
     } catch (err) {
-      console.error(`[Account ${this.index}] Verbindungsfehler: ${err.message}`);
+      console.error(`[Account ${this.index}] Fehler: ${err.message}`);
       setTimeout(() => this.connect(), 5000);
     }
   }
@@ -236,29 +206,15 @@ class DiscordRPC {
   }
 }
 
-// ============================================
-// MAIN
-// ============================================
 console.log('=== 24/7 Discord RPC ===');
-console.log('Lade Tokens...\n');
-
 const tokens = loadTokens();
-console.log(`Gefunden: ${tokens.length} Token(s)\n`);
+console.log(`${tokens.length} Account(s) gefunden\n`);
 
 const clients = tokens.map((token, i) => new DiscordRPC(token, i + 1));
-
-// Alle starten
 clients.forEach(client => client.connect());
 
-console.log('\nDrücke Strg+C zum Beenden\n');
-
-// Graceful shutdown
 process.on('SIGINT', () => {
-  console.log('\n[Shutdown] Beende alle Verbindungen...');
+  console.log('\nShutdown...');
   clients.forEach(client => client.disconnect());
-  setTimeout(() => process.exit(0), 1000);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('[Fatal]', err.message);
+  process.exit(0);
 });

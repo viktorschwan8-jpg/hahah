@@ -3,35 +3,33 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-// Railway liest Tokens aus Environment Variables
-// Format: TOKEN1,_TOKEN2,_TOKEN3 (komma-getrennt)
-// Oder: Eine Tokens.txt Datei im Project
-
 const TOKENS_FILE = path.join(__dirname, 'tokens.txt');
 
-// RPC Config
+// RPC Config - wie Vencord Plugin
 const RPC_CONFIG = {
-  state: 'discord.gg/976',
-  details: '24/7 Active',
-  largeImageKey: 'deathcord_logo',
-  largeImageText: 'Deathcord',
-  smallImageKey: 'online',
-  smallImageText: 'Online',
+  name: 'discord.gg/976',
+  type: 0,
+  state: '976',
+  details: '976',
+  application_id: '1539180940050300978',
+  assets: {
+    large_image: 'https://i.postimg.cc/jSRYrNdC/standard(4).gif',
+    large_text: 'discord.gg/976',
+  },
+  timestamps: {
+    start: Date.now()
+  },
   instance: false,
 };
 
 const STATUS = 'online';
 
-// Tokens laden
 function loadTokens() {
-  // Zuerst Environment Variable versuchen (fuer Railway)
   if (process.env.TOKENS) {
     return process.env.TOKENS.split(',').map(t => t.trim()).filter(t => t.length > 20);
   }
-  // Sonst tokens.txt
   if (!fs.existsSync(TOKENS_FILE)) {
     console.log('[ERROR] Keine Tokens gefunden!');
-    console.log('[ERROR] Setze TOKENS Env Var oder erstelle tokens.txt');
     process.exit(1);
   }
   return fs.readFileSync(TOKENS_FILE, 'utf8')
@@ -63,6 +61,19 @@ class DiscordRPC {
     });
   }
 
+  buildActivity() {
+    return {
+      name: RPC_CONFIG.name,
+      type: RPC_CONFIG.type,
+      state: RPC_CONFIG.state,
+      details: RPC_CONFIG.details,
+      application_id: RPC_CONFIG.application_id,
+      assets: RPC_CONFIG.assets,
+      timestamps: RPC_CONFIG.timestamps,
+      instance: RPC_CONFIG.instance,
+    };
+  }
+
   identify() {
     return {
       op: 2,
@@ -86,20 +97,7 @@ class DiscordRPC {
         presence: {
           status: STATUS,
           since: 0,
-          activities: [{
-            name: 'Custom RPC',
-            type: 0,
-            state: RPC_CONFIG.state,
-            details: RPC_CONFIG.details,
-            assets: {
-              large_image: RPC_CONFIG.largeImageKey,
-              large_text: RPC_CONFIG.largeImageText,
-              small_image: RPC_CONFIG.smallImageKey,
-              small_text: RPC_CONFIG.smallImageText
-            },
-            instance: RPC_CONFIG.instance,
-            timestamps: { start: Date.now() }
-          }],
+          activities: [this.buildActivity()],
           afk: false
         },
         compress: false,
@@ -121,20 +119,7 @@ class DiscordRPC {
         d: {
           status: STATUS,
           since: 0,
-          activities: [{
-            name: 'Custom RPC',
-            type: 0,
-            state: RPC_CONFIG.state,
-            details: RPC_CONFIG.details,
-            assets: {
-              large_image: RPC_CONFIG.largeImageKey,
-              large_text: RPC_CONFIG.largeImageText,
-              small_image: RPC_CONFIG.smallImageKey,
-              small_text: RPC_CONFIG.smallImageText
-            },
-            instance: RPC_CONFIG.instance,
-            timestamps: { start: Date.now() }
-          }],
+          activities: [this.buildActivity()],
           afk: false
         }
       }));
