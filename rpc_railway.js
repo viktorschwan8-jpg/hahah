@@ -167,11 +167,10 @@ class DiscordRPC {
       this.ws.on('close', (code) => {
         console.log(`[Account ${this.index}] Closed: ${code}`);
         this.cleanup();
-        if (code !== 1000) {
-          this.reconnectAttempts++;
-          const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 60000);
-          setTimeout(() => this.connect(), delay);
-        }
+        this.reconnectAttempts++;
+        const delay = Math.min(3000 * this.reconnectAttempts, 60000);
+        console.log(`[Account ${this.index}] Reconnect in ${delay/1000}s...`);
+        setTimeout(() => this.connect(), delay);
       });
 
       this.ws.on('error', (err) => console.error(`[Account ${this.index}] Error: ${err.message}`));
