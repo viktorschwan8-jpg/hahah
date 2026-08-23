@@ -11,7 +11,7 @@ const TOKENS_FILE = path.join(__dirname, 'tokens.txt');
 
 // RPC Config
 const RPC_CONFIG = {
-  state: 'Online via Deathcord',
+  state: 'discord.gg/976',
   details: '24/7 Active',
   largeImageKey: 'deathcord_logo',
   largeImageText: 'Deathcord',

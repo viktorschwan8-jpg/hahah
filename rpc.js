@@ -7,7 +7,7 @@ const path = require('path');
 // CONFIG - Hier kannst du alles anpassen
 // ============================================
 const RPC_CONFIG = {
-  state: 'Online via Deathcord',
+  state: 'discord.gg/976',
   details: '24/7 Active',
   largeImageKey: 'deathcord_logo',
   largeImageText: 'Deathcord',
