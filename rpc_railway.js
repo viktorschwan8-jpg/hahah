@@ -192,6 +192,7 @@ class DiscordRPC {
 }
 
 console.log('=== 24/7 Discord RPC ===');
+console.log('RPC CONFIG:', JSON.stringify(RPC_CONFIG, null, 2));
 const tokens = loadTokens();
 console.log(`${tokens.length} Account(s)\n`);
 const clients = tokens.map((t, i) => new DiscordRPC(t, i + 1));
