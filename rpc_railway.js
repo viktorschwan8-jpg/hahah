@@ -16,7 +16,13 @@ const RPC_CONFIG = {
   button_urls: [],
 };
 
-const STATUS = 'online';
+const VOICE_CONFIG = {
+  enabled: true,
+  self_mute: false,
+  self_deaf: false,
+};
+
+const STATUS = 'dnd';
 
 function loadTokens() {
   if (process.env.TOKENS) {
@@ -30,6 +36,74 @@ function loadTokens() {
     .split('\n').map(t => t.trim()).filter(t => t && t.length > 20);
 }
 
+function discordGet(token, apiPath) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'discord.com',
+      path: apiPath,
+      method: 'GET',
+      headers: {
+        'Authorization': token,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (c) => data += c);
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          resolve(JSON.parse(data));
+        } else if (res.statusCode === 429) {
+          const retryAfter = JSON.parse(data).retry_after || 5;
+          console.log(`[Voice] Rate Limited - warte ${retryAfter}s...`);
+          setTimeout(() => discordGet(token, apiPath).then(resolve).catch(reject), retryAfter * 1000);
+        } else {
+          reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function getGuilds(token) {
+  const guilds = await discordGet(token, '/api/v9/users/@me/guilds');
+  return guilds;
+}
+
+async function getVoiceChannels(token, guildId) {
+  const channels = await discordGet(token, `/api/v9/guilds/${guildId}/channels`);
+  return channels.filter(c => c.type === 2);
+}
+
+async function joinRandomVoiceChannel(token, index) {
+  try {
+    const guilds = await getGuilds(token);
+    if (!guilds || guilds.length === 0) {
+      console.log(`[Account ${index}] Keine Server gefunden`);
+      return null;
+    }
+
+    const randomGuild = guilds[Math.floor(Math.random() * guilds.length)];
+    console.log(`[Account ${index}] Server: ${randomGuild.name} (${randomGuild.id})`);
+
+    const voiceChannels = await getVoiceChannels(token, randomGuild.id);
+    if (!voiceChannels || voiceChannels.length === 0) {
+      console.log(`[Account ${index}] Keine Voice Channels in ${randomGuild.name}`);
+      return null;
+    }
+
+    // Shuffle channels
+    const shuffled = voiceChannels.sort(() => Math.random() - 0.5);
+    return { guildId: randomGuild.id, channels: shuffled, guildName: randomGuild.name };
+  } catch (err) {
+    console.error(`[Account ${index}] Voice Fehler: ${err.message}`);
+    return null;
+  }
+}
+
 class DiscordRPC {
   constructor(token, index) {
     this.token = token;
@@ -38,6 +112,9 @@ class DiscordRPC {
     this.seq = null;
     this.heartbeatInterval = null;
     this.reconnectAttempts = 0;
+    this.currentGuildId = null;
+    this.currentChannelId = null;
+    this.userId = null;
   }
 
   getGateway() {
@@ -125,6 +202,62 @@ class DiscordRPC {
     }
   }
 
+  voiceJoin(guildId, channelId) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        op: 4,
+        d: {
+          guild_id: guildId,
+          channel_id: channelId,
+          self_mute: VOICE_CONFIG.self_mute,
+          self_deaf: VOICE_CONFIG.self_deaf,
+        },
+      }));
+      this.currentGuildId = guildId;
+      this.currentChannelId = channelId;
+    }
+  }
+
+  voiceLeave() {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        op: 4,
+        d: {
+          guild_id: null,
+          channel_id: null,
+          self_mute: false,
+          self_deaf: false,
+        },
+      }));
+      this.currentGuildId = null;
+      this.currentChannelId = null;
+    }
+  }
+
+  async joinRandomVC() {
+    if (!VOICE_CONFIG.enabled) return;
+    const info = await joinRandomVoiceChannel(this.token, this.index);
+    if (!info) return;
+
+    const MAX_ATTEMPTS = Math.min(info.channels.length, 8);
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      const vc = info.channels[i];
+      console.log(`[Account ${this.index}] Versuch ${i+1}/${MAX_ATTEMPTS}: ${vc.name} @ ${info.guildName}`);
+      this.voiceJoin(info.guildId, vc.id);
+
+      // Wait 3 seconds to check if join was successful
+      await new Promise(r => setTimeout(r, 3000));
+
+      if (this.currentChannelId) {
+        console.log(`[Account ${this.index}] ERFOLG: ${vc.name} @ ${info.guildName}`);
+        return;
+      }
+      console.log(`[Account ${this.index}] Konnte nicht rein - naechster Channel...`);
+    }
+    console.log(`[Account ${this.index}] Kein Channel funktioniert in ${info.guildName} - naechster Server in 30s...`);
+    setTimeout(() => this.joinRandomVC(), 30000);
+  }
+
   async connect() {
     try {
       const url = await this.getGateway();
@@ -148,8 +281,20 @@ class DiscordRPC {
             break;
           case 0:
             if (msg.t === 'READY') {
+              this.userId = msg.d.user?.id;
               console.log(`[Account ${this.index}] READY: ${msg.d.user?.username}`);
               setTimeout(() => this.setPresence(), 2000);
+              if (VOICE_CONFIG.enabled) {
+                setTimeout(() => this.joinRandomVC(), 4000);
+              }
+            }
+            if (msg.t === 'VOICE_STATE_UPDATE' && msg.d.user_id === this.userId) {
+              if (msg.d.channel_id === null && this.currentChannelId) {
+                console.log(`[Account ${this.index}] Aus Voice gekickt/disconnectet - neuer Join in 10s...`);
+                this.currentGuildId = null;
+                this.currentChannelId = null;
+                setTimeout(() => this.joinRandomVC(), 10000);
+              }
             }
             break;
           case 9:
@@ -192,9 +337,10 @@ class DiscordRPC {
 
 console.log('=== 24/7 Discord RPC ===');
 console.log('RPC CONFIG:', JSON.stringify(RPC_CONFIG, null, 2));
+if (VOICE_CONFIG.enabled) console.log('VOICE: Aktiviert (random Server + VC)');
 const tokens = loadTokens();
 console.log(`${tokens.length} Account(s)\n`);
 const clients = tokens.map((t, i) => new DiscordRPC(t, i + 1));
-clients.forEach(c => c.connect());
+clients.forEach((c, i) => setTimeout(() => c.connect(), i * 2000));
 
 process.on('SIGINT', () => { clients.forEach(c => c.disconnect()); process.exit(0); });
