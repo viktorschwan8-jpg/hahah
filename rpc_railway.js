@@ -20,7 +20,7 @@ const VOICE_CONFIG = {
   enabled: true,
   self_mute: false,
   self_deaf: false,
-  rotate_minutes: 30,
+  rotate_minutes: 20,
 };
 
 const STATUS = 'dnd';
