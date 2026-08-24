@@ -20,6 +20,7 @@ const VOICE_CONFIG = {
   enabled: true,
   self_mute: false,
   self_deaf: false,
+  rotate_minutes: 30,
 };
 
 const STATUS = 'dnd';
@@ -115,6 +116,7 @@ class DiscordRPC {
     this.currentGuildId = null;
     this.currentChannelId = null;
     this.userId = null;
+    this.voiceRotateTimer = null;
   }
 
   getGateway() {
@@ -236,6 +238,10 @@ class DiscordRPC {
 
   async joinRandomVC() {
     if (!VOICE_CONFIG.enabled) return;
+
+    if (this.voiceRotateTimer) clearTimeout(this.voiceRotateTimer);
+    this.voiceLeave();
+
     const info = await joinRandomVoiceChannel(this.token, this.index);
     if (!info) return;
 
@@ -250,6 +256,11 @@ class DiscordRPC {
 
       if (this.currentChannelId) {
         console.log(`[Account ${this.index}] ERFOLG: ${vc.name} @ ${info.guildName}`);
+        const rotateMs = VOICE_CONFIG.rotate_minutes * 60 * 1000;
+        this.voiceRotateTimer = setTimeout(() => {
+          console.log(`[Account ${this.index}] Rotation nach ${VOICE_CONFIG.rotate_minutes}min - neuer Server...`);
+          this.joinRandomVC();
+        }, rotateMs);
         return;
       }
       console.log(`[Account ${this.index}] Konnte nicht rein - naechster Channel...`);
@@ -327,6 +338,7 @@ class DiscordRPC {
 
   cleanup() {
     if (this.heartbeatInterval) { clearInterval(this.heartbeatInterval); this.heartbeatInterval = null; }
+    if (this.voiceRotateTimer) { clearTimeout(this.voiceRotateTimer); this.voiceRotateTimer = null; }
   }
 
   disconnect() {
