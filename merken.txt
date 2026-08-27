@@ -1,45 +1,42 @@
-# 24/7 Selfbot - Was wurde gemacht
+## Stand: 27.08.2026 - Quest Bot Status
 
-## 23.08.2026
+### Was FUNKTIONIERT:
+1. **Token-Login via Chrome Extension** - Funktioniert! Chrome startet, Extension setzt Token, Discord zeigt /app (eingeloggt)
+2. **REST API Quests laden** - Funktioniert! /api/v9/quests/@me gibt 21-29 Quests pro Account zurueck
+3. **REST API Video-Quests** - Funktioniert! heartbeat/post-fortheart schicken Fortschritt an Discord
+4. **REST API Rewards claimen** - Funktioniert! /api/v9/quests/{id}/claim-reward
+5. **rpc_railway.js** - Laeuft auf Railway mit Quest Worker (nur Video-Quests via REST API)
+6. **Alle Tokens korrekt** - 22 Tokens in tokens.txt, alle funktional
 
-### Projekt erstellt
-- Ordner: D:\247selfbot
-- tokens.txt mit 20 Tokens aus DiscordLightcord kopiert
-- accsliste.txt mit Account-Übersicht erstellt
+### Was NICHT funktioniert:
+1. **Orion Script in Chrome injizieren** - Script wird injiziert (injected Status), aber:
+   - Orion laeuft nicht durch (kein orionLock, kein UI Element)
+   - Keine Fehler sichtbar (keine console errors)
+   - Vermutlich: Orion braucht Discord Desktop/Webpack Module die im Browser nicht so funktionieren
+   - Oder: Orion bricht leise ab weil Webpack Module nicht geladen sind
 
-### RPC Skripte erstellt
-- rpc.js (lokal)
-- rpc_railway.js (für Railway)
-- rpc_account18.js (nur Account 18, in DiscordLightcord Ordner)
-- start_rpc.bat (Doppelklick zum Starten)
+2. **GAME Quests via REST API** - çerçne moeglich:
+   - Discord prueft ob ein Desktop-Client (RunningGameStore) das Spiel gestartet hat
+   - REST API allein reicht nicht - braucht Browser/Desktop Spoofing
 
-### Account 18 identifiziert
-- Token: [in tokens.txt]
-- Username: meteantfreoldvya_43368
-- Email: caraebrydon2010@ghoulmail.com
+3. **Chrome Quest Runner (chrome_quest.js)** - Token-Login klappt, aber Orion inseted nicht richtig
 
-### Railway Deployment
-- GitHub Repo: https://github.com/viktorschwan8-jpg/hahah
-- Railway Projekt: gentle-hope
-- Service: hahah
-- TOKENS Variable gesetzt (nur Account 18 zum Testen)
-- Railway CLI installiert + eingeloggt (viktorschwan8@gmail.com)
+### Was noch zu tun waere:
+1. **Orion Webpack Debug** - Pruefen ob `window.webpackChunkdiscord_app` im Chrome Browser existiert
+2. **Orion Fehler finden** - Orion bricht wahrscheinlich ab weil Stores nicht gefunden werden
+3. **Desktop Client Alternative** - Fuer GAME Quests braucht man den Desktop Client (Ndiscord/Equicord)
+4. **Oder: Anderes Script** - Ein REST-only Quest Bot der VIDEO+GAMEQuests ohne Browser spoofed
 
-### RPC Config (aktuell)
-- Application ID: 1539180940050300978
-- Application Name: discord.gg/976
-- Details: 976
-- State: 976
-- Large Image URL: https://i.postimg.cc/jSRYrNdC/standard(4).gif
+### Token-Login Extension:
+- Eigene Extension in `discord-token-login/`
+- Manifest V3, Content Script auf discord.com/login
+- Speichert Token in chrome.storage, setzt localStorage, laedt Seite neu
+- Funktioniert mit --load-extension Flag in Chrome
 
-### Bekannte Probleme
-- RPC wurde nicht angezeigt wie im Vencord Plugin
-
-### Was gefixt wurde
-- mp: Prefix für externe Bild-URL hinzugefügt (Discord Media Proxy)
-- Buttons hinzugefügt (Join 976)
-- Activity Name auf "discord.gg/976" gesetzt (wie Application Name)
-- GitHub Push Protection blockierte Token in merken.txt → History bereinigt
-
-### Railway Status
-- Push funktioniert, deployt automatisch
+### Dateien:
+- `rpc_railway.js` - Hauptscript fuer Railway (REST API Quests + RPC)
+- `chrome_quest.js` - Chrome CDP Runner (Token-Login + Orion Injection)
+- `test_quick.js` - Debug Test fuer Orion
+- `discord-token-login/` - Chrome Extension fuer Token-Login
+- `freedekoscript.txt` - Orion Script (Referenz)
+- `tokens.txt` - 22 Discord Tokens

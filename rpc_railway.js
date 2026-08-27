@@ -1,12 +1,13 @@
 const { WebSocket } = require('ws');
 const https = require('https');
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
 const TOKENS_FILE = path.join(__dirname, 'tokens.txt');
 
 const RPC_CONFIG = {
-  name: 'discord.gg/976',
+  name: 'discord.gg/796',
   type: 0,
   details: '',
   state: '',
@@ -347,12 +348,296 @@ class DiscordRPC {
   }
 }
 
+/* ── Quest Worker (REST API) ───────────────────────────────────
+   Automatisiert Discord-Quests alle 5 Stunden über die REST API.
+   Kein Browser nötig - läuft komplett in Node.js.
+────────────────────────────────────────────────────────────── */
+
+const QUEST_CONFIG = {
+  enabled: true,
+  interval_hours: 5,       // alle 5 Stunden
+  video_interval_ms: [7000, 9500],  // Video-Heartbeat Intervall
+  max_task_time_ms: 25 * 60 * 1000, // 25 min Timeout pro Quest
+  max_failures: 5,
+  max_retries: 3,
+};
+
+function discordAPI(method, apiPath, token, body = null) {
+  return new Promise((resolve, reject) => {
+    const data = body ? JSON.stringify(body) : null;
+    const options = {
+      hostname: 'discord.com',
+      path: apiPath,
+      method: method,
+      headers: {
+        'Authorization': token,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    };
+    if (data) options.headers['Content-Length'] = Buffer.byteLength(data);
+
+    const req = https.request(options, (res) => {
+      let rdata = '';
+      res.on('data', (c) => rdata += c);
+      res.on('end', () => {
+        if (res.statusCode === 429) {
+          const retryAfter = JSON.parse(rdata).retry_after || 5;
+          console.log(`[Quest] Rate Limited - warte ${retryAfter}s...`);
+          setTimeout(() => discordAPI(method, apiPath, token, body).then(resolve).catch(reject), retryAfter * 1000);
+          return;
+        }
+        try {
+          const parsed = rdata ? JSON.parse(rdata) : {};
+          resolve({ status: res.statusCode, body: parsed });
+        } catch (e) {
+          resolve({ status: res.statusCode, body: rdata });
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('API timeout')); });
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function rnd(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+function detectQuestType(quest) {
+  const cfg = quest.config?.task_config ?? quest.config?.task_config_v2;
+  if (!cfg?.tasks) return null;
+
+  const taskKeys = Object.keys(cfg.tasks);
+  const typeMap = [
+    { match: k => k.includes('VIDEO'), type: 'VIDEO' },
+    { match: k => k.startsWith('PLAY'), type: 'GAME' },
+    { match: k => k.startsWith('STREAM'), type: 'STREAM' },
+    { match: k => k.includes('ACTIVITY'), type: 'ACTIVITY' },
+    { match: k => k === 'ACHIEVEMENT_IN_ACTIVITY', type: 'ACHIEVEMENT' },
+  ];
+
+  for (const { match, type } of typeMap) {
+    const keyName = taskKeys.find(match);
+    if (keyName) {
+      return {
+        type, keyName,
+        target: cfg.tasks[keyName]?.target ?? 0,
+        appId: cfg.tasks[keyName]?.applications?.[0]?.id ?? quest.config?.application?.id ?? null,
+      };
+    }
+  }
+  return null;
+}
+
+async function runVideoQuest(token, quest, typeData, index) {
+  const questId = quest.id;
+  const questName = quest.config?.messages?.quest_name ?? 'Unknown';
+  let cur = quest.user_status?.progress?.[typeData.keyName]?.value ?? 0;
+  let failCount = 0;
+  const startTime = Date.now();
+
+  console.log(`[Account ${index}] [Quest] VIDEO "${questName}" - Ziel: ${typeData.target}s`);
+
+  while (cur < typeData.target) {
+    const delayMs = rnd(...QUEST_CONFIG.video_interval_ms);
+    await sleep(delayMs);
+
+    const elapsedSec = (delayMs / 1000) + (Math.random() * 0.02 - 0.01);
+    cur += elapsedSec;
+    const payloadTs = Number(Math.min(typeData.target, cur).toFixed(6));
+
+    try {
+      const r = await discordAPI('POST', `/api/v9/quests/${questId}/video-progress`, token, { timestamp: payloadTs });
+      failCount = 0;
+      if (r.status === 200) {
+        const serverVal = r.body?.progress?.[typeData.keyName]?.value;
+        if (serverVal > cur) cur = Math.min(typeData.target, serverVal);
+        if (r.body?.completed_at) break;
+      }
+    } catch (e) {
+      failCount++;
+      if (failCount >= QUEST_CONFIG.max_failures) {
+        console.log(`[Account ${index}] [Quest] VIDEO "${questName}" - Zu viele Fehler, überspringe`);
+        return false;
+      }
+    }
+
+    if (Date.now() - startTime > QUEST_CONFIG.max_task_time_ms) {
+      console.log(`[Account ${index}] [Quest] VIDEO "${questName}" - Timeout`);
+      return false;
+    }
+  }
+
+  console.log(`[Account ${index}] [Quest] VIDEO "${questName}" - FERTIG!`);
+  return true;
+}
+
+async function runHeartbeatQuest(token, quest, typeData, index) {
+  const questId = quest.id;
+  const questName = quest.config?.messages?.quest_name ?? 'Unknown';
+  let cur = quest.user_status?.progress?.[typeData.keyName]?.value ?? 0;
+  let failCount = 0;
+  const startTime = Date.now();
+
+  console.log(`[Account ${index}] [Quest] ${typeData.type} "${questName}" - Ziel: ${typeData.target}`);
+
+  while (cur < typeData.target) {
+    await sleep(rnd(19000, 22000));
+
+    try {
+      const r = await discordAPI('POST', `/api/v9/quests/${questId}/heartbeat`, token, {
+        stream_key: null,
+        application_id: String(typeData.appId || ''),
+        terminal: false,
+      });
+
+      if (r.status === 200) {
+        const reported = r.body?.progress?.[typeData.keyName]?.value;
+        if (typeof reported === 'number') cur = reported;
+        failCount = 0;
+        if (cur >= typeData.target) break;
+      } else if (r.status >= 400 && r.status < 500) {
+        console.log(`[Account ${index}] [Quest] ${typeData.type} "${questName}" - HTTP ${r.status}, überspringe`);
+        return false;
+      }
+    } catch (e) {
+      failCount++;
+      if (failCount >= QUEST_CONFIG.max_failures) {
+        console.log(`[Account ${index}] [Quest] ${typeData.type} "${questName}" - Zu viele Fehler`);
+        return false;
+      }
+    }
+
+    if (Date.now() - startTime > QUEST_CONFIG.max_task_time_ms) {
+      console.log(`[Account ${index}] [Quest] ${typeData.type} "${questName}" - Timeout`);
+      return false;
+    }
+  }
+
+  console.log(`[Account ${index}] [Quest] ${typeData.type} "${questName}" - FERTIG!`);
+  return true;
+}
+
+async function claimReward(token, questId, index) {
+  try {
+    const r = await discordAPI('POST', `/api/v9/quests/${questId}/claim-reward`, token, {
+      platform: 0, location: 11, is_targeted: false,
+      metadata_sealed: null, traffic_metadata_sealed: null,
+    });
+    if (r.body?.claimed_at) {
+      console.log(`[Account ${index}] [Quest] Reward geclaimed!`);
+      return true;
+    }
+  } catch (e) {
+    console.log(`[Account ${index}] [Quest] Claim fehlgeschlagen: ${e.message}`);
+  }
+  return false;
+}
+
+async function processQuests(token, index) {
+  if (!QUEST_CONFIG.enabled) return;
+
+  console.log(`\n[Account ${index}] [Quest] === Quest-Runde gestartet ===`);
+
+  try {
+    // Quests abrufen
+    const r = await discordAPI('GET', '/api/v9/quests/@me', token);
+    if (r.status !== 200) {
+      console.log(`[Account ${index}] [Quest] Quests nicht verfügbar (HTTP ${r.status})`);
+      return;
+    }
+
+    // API-Antwort kann quests als Array oder als Object enthalten
+    let quests = [];
+    if (Array.isArray(r.body)) {
+      quests = r.body;
+    } else if (r.body?.quests && Array.isArray(r.body.quests)) {
+      quests = r.body.quests;
+    } else if (typeof r.body === 'object') {
+      quests = Object.values(r.body).filter(q => q && typeof q === 'object' && q.id);
+    }
+
+    quests = quests.filter(q => q && !q.user_status?.completed_at && q.id);
+
+    console.log(`[Account ${index}] [Quest] ${quests.length} aktive Quest(s) gefunden`);
+
+    if (!quests.length) {
+      console.log(`[Account ${index}] [Quest] Keine verfügbaren Quests`);
+      return;
+    }
+
+    console.log(`[Account ${index}] [Quest] ${quests.length} Quest(s) gefunden`);
+
+    let completed = 0;
+    for (const quest of quests) {
+      const typeData = detectQuestType(quest);
+      if (!typeData) {
+        console.log(`[Account ${index}] [Quest] Unbekannter Typ: ${quest.config?.messages?.quest_name ?? quest.id}`);
+        continue;
+      }
+
+      // Quest enrollen wenn nötig
+      if (!quest.user_status?.enrolled_at) {
+        try {
+          await discordAPI('POST', `/api/v9/quests/${quest.id}/enroll`, token, {});
+          await sleep(rnd(2000, 4000));
+        } catch (e) { /* ignore */ }
+      }
+
+      let success = false;
+      if (typeData.type === 'VIDEO') {
+        success = await runVideoQuest(token, quest, typeData, index);
+      } else {
+        // GAME/STREAM/ACTIVITY/ACHIEVEMENT brauchen Browser-Spoofing
+        // which is not possible via REST API alone. Skip these.
+        console.log(`[Account ${index}] [Quest] "${quest.config?.messages?.quest_name}" - Typ "${typeData.type}" braucht Browser, überspringe`);
+        continue;
+      }
+
+      if (success) {
+        await sleep(rnd(2500, 5000));
+        await claimReward(token, quest.id, index);
+        completed++;
+      }
+
+      await sleep(rnd(3000, 6000));
+    }
+
+    console.log(`[Account ${index}] [Quest] Runde beendet: ${completed}/${quests.length} abgeschlossen`);
+  } catch (e) {
+    console.log(`[Account ${index}] [Quest] Fehler: ${e.message}`);
+  }
+}
+
+// Quest-Worker für alle Tokens
+async function runQuestCycle(allTokens) {
+  console.log(`\n[Quest Worker] Starte Quest-Zyklus für ${allTokens.length} Account(s)...`);
+  for (let i = 0; i < allTokens.length; i++) {
+    await processQuests(allTokens[i], i + 1);
+    await sleep(rnd(5000, 10000)); // Pause zwischen Accounts
+  }
+  console.log(`[Quest Worker] Zyklus abgeschlossen. Nächster in ${QUEST_CONFIG.interval_hours}h`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+
 console.log('=== 24/7 Discord RPC ===');
 console.log('RPC CONFIG:', JSON.stringify(RPC_CONFIG, null, 2));
 if (VOICE_CONFIG.enabled) console.log('VOICE: Aktiviert (random Server + VC)');
+if (QUEST_CONFIG.enabled) console.log(`QUESTS: Aktiviert (alle ${QUEST_CONFIG.interval_hours}h)`);
 const tokens = loadTokens();
 console.log(`${tokens.length} Account(s)\n`);
 const clients = tokens.map((t, i) => new DiscordRPC(t, i + 1));
 clients.forEach((c, i) => setTimeout(() => c.connect(), i * 2000));
+
+// Quest-Worker: Start + alle 5 Stunden
+if (QUEST_CONFIG.enabled && tokens.length > 0) {
+  // Erste Runde nach 30 Sekunden (damit die Verbindungen erst aufgebaut werden)
+  setTimeout(() => runQuestCycle(tokens), 30000);
+  // Dann alle 5 Stunden
+  setInterval(() => runQuestCycle(tokens), QUEST_CONFIG.interval_hours * 60 * 60 * 1000);
+}
 
 process.on('SIGINT', () => { clients.forEach(c => c.disconnect()); process.exit(0); });
